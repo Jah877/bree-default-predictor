@@ -1,82 +1,25 @@
-
-# ==========================================
-# Python environments
-# ==========================================
+# Python environment and caches
 .venv/
 venv/
-env/
-ENV/
-.conda/
-conda-env/
-
-# Python caches and compiled files
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
 .pytest_cache/
 .mypy_cache/
-.ruff_cache/
-
-# ==========================================
-# Jupyter notebooks
-# ==========================================
 .ipynb_checkpoints/
 
-# ==========================================
-# IDE and editor settings
-# ==========================================
+# Local tooling and OS
 .vscode/
 .idea/
-*.code-workspace
-*.swp
-*.swo
-*~
-
-# ==========================================
-# Windows system files
-# ==========================================
-Thumbs.db
-Thumbs.db:encryptable
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-*.lnk
-
-# ==========================================
-# macOS and Linux system files
-# ==========================================
 .DS_Store
-.AppleDouble
-.LSOverride
-.Trashes/
-.nfs*
+Thumbs.db
+Desktop.ini
 
-# ==========================================
-# Logs and temporary files
-# ==========================================
-*.log
-*.tmp
-*.temp
-*.bak
-*.old
-*.cache
-tmp/
-temp/
-
-# ==========================================
-# Local environment and credentials
-# ==========================================
+# Temporary, secrets, logs
 .env
 .env.*
 !.env.example
-*.pem
-*.key
+*.log
+*.tmp
 
-# ==========================================
-# Build and packaging artifacts
-# ==========================================
-build/
-dist/
-*.egg-info/
-.eggs/
+# Keep the generated loan CSV and small analysis figures/tables tracked
+# so reviewers can inspect findings without running the pipeline.

@@ -1,0 +1,8 @@
+scenario,feature,n,input_rows_changed,mean_score_change,mean_abs_score_change,fraction_action_changed,approved_to_not_approved,not_approved_to_approved
+loan_amount_up_25pct,loan_amount,1101,1101,-1.9621253405994552,1.9621253405994552,0.08810172570390554,72,0
+stated_income_down_20pct,stated_monthly_income,1101,1101,-15.240145322434152,15.240145322434152,0.6412352406902816,433,0
+bank_balance_down_500,bank_ending_balance,1101,1001,-0.5885558583106267,0.5885558583106267,0.02815622161671208,18,0
+overdrafts_present,bank_has_overdrafts,1101,924,-5.03542234332425,5.03542234332425,0.20345140781108084,139,0
+deposits_inconsistent,bank_has_consistent_deposits,1101,718,-3.912806539509537,3.912806539509537,0.13805631244323344,105,0
+employed_to_self_employed,employment_status,652,652,-6.0,6.0,0.21012269938650308,102,0
+self_employed_to_employed,employment_status,332,332,6.0,6.0,0.21385542168674698,0,40

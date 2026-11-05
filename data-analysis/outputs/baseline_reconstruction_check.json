@@ -1,0 +1,7 @@
+{
+  "rows": 2000,
+  "exact_score_matches": 1979,
+  "score_mean_absolute_difference": 0.00925,
+  "score_max_absolute_difference": 16.500000000000004,
+  "policy_decision_matches": 2000
+}

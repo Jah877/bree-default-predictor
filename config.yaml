@@ -1,0 +1,70 @@
+# Repository-wide configuration. All paths are relative to this file.
+project:
+  name: bree-default-predictor
+  random_state: 42
+
+paths:
+  dataset: data-analysis/loan_applications.csv
+  outputs: data-analysis/outputs
+
+data:
+  identifier: applicant_id
+  target: actual_outcome
+  positive_label: defaulted
+  negative_label: repaid
+  unresolved_label: ongoing
+  # Never use outcome-derived or previous-policy columns to train a new model.
+  excluded_model_features:
+    - applicant_id
+    - actual_outcome
+    - days_to_default
+    - rule_based_score
+    - rule_based_decision
+
+split:
+  train_fraction: 0.60
+  validation_fraction: 0.20
+  test_fraction: 0.20
+
+baseline:
+  approve_at_or_above: 75
+  review_at_or_above: 50
+
+analysis:
+  quantile_bins: 6
+  # Independently perturb each feature; these are policy stress tests, NOT causal effects.
+  sensitivity_scenarios:
+    - name: loan_amount_up_25pct
+      feature: loan_amount
+      operation: multiply
+      value: 1.25
+    - name: stated_income_down_20pct
+      feature: stated_monthly_income
+      operation: multiply
+      value: 0.8
+    - name: bank_balance_down_500
+      feature: bank_ending_balance
+      operation: add
+      value: -500
+    - name: overdrafts_present
+      feature: bank_has_overdrafts
+      operation: set
+      value: true
+    - name: deposits_inconsistent
+      feature: bank_has_consistent_deposits
+      operation: set
+      value: false
+    - name: employed_to_self_employed
+      feature: employment_status
+      operation: set
+      value: self_employed
+      only_when:
+        feature: employment_status
+        equals: employed
+    - name: self_employed_to_employed
+      feature: employment_status
+      operation: set
+      value: employed
+      only_when:
+        feature: employment_status
+        equals: self_employed

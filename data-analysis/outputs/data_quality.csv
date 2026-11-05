@@ -1,0 +1,16 @@
+feature,dtype,missing_count,missing_pct,unique_count
+applicant_id,object,0,0.0,2000
+stated_monthly_income,float64,0,0.0,1690
+documented_monthly_income,float64,283,14.15,1511
+loan_amount,int64,0,0.0,7
+employment_status,object,0,0.0,3
+bank_ending_balance,float64,0,0.0,1502
+bank_has_overdrafts,bool,0,0.0,2
+bank_has_consistent_deposits,bool,0,0.0,2
+monthly_withdrawals,float64,0,0.0,1619
+monthly_deposits,float64,0,0.0,1721
+num_documents_submitted,int64,0,0.0,3
+rule_based_score,float64,0,0.0,573
+rule_based_decision,object,0,0.0,3
+actual_outcome,object,0,0.0,3
+days_to_default,float64,1455,72.75,159
