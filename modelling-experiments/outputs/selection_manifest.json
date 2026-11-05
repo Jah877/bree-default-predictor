@@ -87,10 +87,10 @@
     }
   },
   "thresholds": {
-    "E1": 0.23620311446143966,
-    "E2": 0.21962553930760867,
+    "E1": 0.23620311446144043,
+    "E2": 0.2196255393075948,
     "E3": 0.2545454545454545,
-    "E4": 0.22623079886706277
+    "E4": 0.22623079886705974
   },
   "limitation": "Observational synthetic labels, not causal effects or deployment-ready approval policy."
 }
