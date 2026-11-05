@@ -44,3 +44,37 @@ All analyses involving `actual_outcome` use the **training split only**, leaving
 - Model construction, honest held-out testing and fairness analysis of **new model** decisions belong to the next phase.
 
 For the analysis questions, assumptions and report mapping, see [`data-analysis/ANALYSIS_PROTOCOL.md`](data-analysis/ANALYSIS_PROTOCOL.md).
+
+## Modelling experiments: E0–E4
+
+The complete comparison suite is under [`modelling-experiments/`](modelling-experiments/).
+Each experiment owns its parameters and hypotheses under
+[`modelling-experiments/experiments/`](modelling-experiments/experiments/).
+Shared evaluation settings and paths are stored in the root `config.yaml`.
+
+Run the validation-only comparison first:
+
+```bash
+python -m unittest discover -s modelling-experiments/tests -v
+python modelling-experiments/run_experiments.py
+```
+
+Review `modelling-experiments/outputs/validation_metrics.csv`, employment-group
+metrics, variable-importance tables, individual explanations, and plots.
+Models E1–E3 are compared at approximately the same **intervention fraction** as
+Bree's current review-or-deny policy. E4 removes employment status from the
+best validation-selected model without modifying its other parameters.
+
+After selecting and locking the approach, make **one final held-out evaluation**:
+
+```bash
+python modelling-experiments/run_experiments.py --finalize-test
+```
+
+This generates `test_metrics.csv`, `test_employment_fairness.csv`, and final
+confusion matrices. It does not retrain models on the test set or choose new
+thresholds. Do not adapt the model after consulting these test results.
+
+**Read the detailed [`METHODOLOGY.md`](modelling-experiments/METHODOLOGY.md)** for
+assumptions, experimental controls, preliminary validation findings, risks and
+explicit limits on causal or deployment claims.

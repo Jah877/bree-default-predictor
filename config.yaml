@@ -6,6 +6,7 @@ project:
 paths:
   dataset: data-analysis/loan_applications.csv
   outputs: data-analysis/outputs
+  modelling_outputs: modelling-experiments/outputs
 
 data:
   identifier: applicant_id
@@ -68,3 +69,10 @@ analysis:
       only_when:
         feature: employment_status
         equals: self_employed
+
+# Experiment parameters stay in modelling-experiments/experiments/e*.py.
+# This config controls shared policy/evaluation settings only.
+modelling:
+  selected_parent_max_intervention_gap: 0.02  # Absolute fraction; 0.02 = 2 pp.
+  selection_priority: [default_recall, average_precision, roc_auc, simplicity]
+  primary_baseline_mapping: intervention  # Review OR deny is an intervention, not denial.

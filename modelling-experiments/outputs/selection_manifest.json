@@ -1,0 +1,97 @@
+{
+  "dataset_sha256": "f776877803cdc02d2b7b1d912b37c6d73fd05f4e1989472f5459d4f7ddce94e0",
+  "split_sizes": {
+    "train": 1101,
+    "validation": 367,
+    "test": 368
+  },
+  "created_utc": "2026-11-05T02:03:05.208765+00:00",
+  "selection_split": "validation",
+  "selected_parent": "E2",
+  "e4_ablates": "E2",
+  "chosen_model": "E2",
+  "e4_role": "diagnostic; not automatically promoted based on its test score",
+  "baseline_primary_definition": "review OR deny = intervene; approve = no intervention",
+  "baseline_strict_secondary_definition": "deny only = predicted default",
+  "threshold_strategy": "closest possible to baseline validation intervention rate, no labels read for threshold",
+  "target_validation_intervention_rate": 0.5068119891008175,
+  "winner_eligibility_rate_gap_at_most": 0.02,
+  "selection_rank": [
+    "default_recall",
+    "average_precision",
+    "roc_auc",
+    "prespecified_simplicity"
+  ],
+  "test_unlocked": false,
+  "test_not_used_for_model_or_threshold_selection": true,
+  "experiments": {
+    "E1": {
+      "key": "E1",
+      "name": "Logistic regression, raw application features",
+      "hypothesis": "A learned additive log-odds model outperforms fixed policy weights.",
+      "model_family": "logistic",
+      "feature_set": "raw",
+      "include_employment": true,
+      "parameters": {
+        "C": 1.0,
+        "solver": "lbfgs",
+        "max_iter": 3000,
+        "class_weight": null,
+        "random_state": 42
+      }
+    },
+    "E2": {
+      "key": "E2",
+      "name": "Logistic regression, engineered financial ratios",
+      "hypothesis": "Relative affordability, cashflow and income mismatch improve linear prediction.",
+      "model_family": "logistic",
+      "feature_set": "engineered",
+      "include_employment": true,
+      "parameters": {
+        "C": 1.0,
+        "solver": "lbfgs",
+        "max_iter": 3000,
+        "class_weight": null,
+        "random_state": 42
+      }
+    },
+    "E3": {
+      "key": "E3",
+      "name": "Shallow decision tree, engineered financial ratios",
+      "hypothesis": "Learned split thresholds and interactions outperform additive log-odds.",
+      "model_family": "tree",
+      "feature_set": "engineered",
+      "include_employment": true,
+      "parameters": {
+        "max_depth": 4,
+        "min_samples_leaf": 30,
+        "min_samples_split": 60,
+        "criterion": "gini",
+        "class_weight": null,
+        "random_state": 42
+      }
+    },
+    "E4": {
+      "key": "E4",
+      "name": "Employment ablation of E2",
+      "hypothesis": "Does removal of employment status alter risk prediction or group disparities?",
+      "model_family": "logistic",
+      "feature_set": "engineered",
+      "include_employment": false,
+      "parameters": {
+        "C": 1.0,
+        "solver": "lbfgs",
+        "max_iter": 3000,
+        "class_weight": null,
+        "random_state": 42
+      }
+    }
+  },
+  "thresholds": {
+    "E1": 0.23620311446143966,
+    "E2": 0.21962553930760867,
+    "E3": 0.2545454545454545,
+    "E4": 0.22623079886706277
+  },
+  "limitation": "Observational synthetic labels, not causal effects or deployment-ready approval policy."
+}
