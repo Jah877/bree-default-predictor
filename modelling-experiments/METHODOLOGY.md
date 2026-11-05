@@ -1,187 +1,55 @@
-# E0–E4 methodology, assumptions and experiment log
+# Experiment methodology and audit trail
 
-This document is intended to be defendable in a take-home interview. It
-explains **why** each experiment exists; numerical conclusions are preliminary
-until the final held-out test is evaluated **once**.
+## Question and data-generating process
 
-## 1. What the labels actually mean
+The modelling task is to predict an observed synthetic `defaulted` versus `repaid` outcome from application-time features, not to imitate Bree's stored score. Bree's rule-based decision is a deterministic weighted score, while the take-home's **separate synthetic probability mechanism** creates the repayment outcomes. The generator's latent risk variables and probability function were not passed to any model. Outcome randomness means the observable inputs cannot perfectly predict default. The dataset is synthetic and is not representative evidence of an actual lending portfolio.
 
-The supplied generator implements **two distinct mechanisms**:
+The original generator was preserved, and its output CSV was committed. The realized label mix (1,291 repaid / 545 defaulted / 164 ongoing) differs from the approximate mix in the narrative. Ongoing applications have unknown outcomes and are excluded from supervised training/evaluation. The known-outcome dataset is split stratified and reproducibly with seed 42 into 1,101 training, 367 validation and 368 test records.
 
-- `rule_based_score` and `rule_based_decision` are computed by a fixed,
-  weighted, deterministic policy based on application features.
-- A **separate**, synthetic latent risk equation computes the probability of
-  default. A Bernoulli sampler draws default outcomes; the generator then
-  randomly labels approximately 8% of applications `ongoing`.
+## Feature availability and leakage controls
 
-The correct supervised task is to predict `defaulted` vs `repaid` from
-**application-time inputs**, treating the latent generator formula as unknown.
-Do **not** copy the formula or train using `days_to_default`, the rule score,
-rule decision, applicant ID, or the label itself. There is irreducible outcome
-randomness: even the true risk probability does not perfectly predict defaults.
+The ML input allowlist excludes `applicant_id` (except for reporting identity), `actual_outcome`, `days_to_default`, `rule_based_score` and `rule_based_decision`. Ratios and missingness flags are deterministically constructed from remaining application-time information. Logistic regression uses training-fitted median imputation, categorical one-hot encoding and numeric standardization; the tree omits scaling. All learned transformations are encapsulated in a scikit-learn pipeline and fit **only on training data**. Validation determines model selection and policy threshold. The held-out test is evaluated once with the fixed models and thresholds, without retraining or retuning.
 
-**Synthetic-world caveat:** the generator assigns realized repayment labels
-even to denied applicants. In real lending, denied borrowers lack observed loan
-repayment outcomes (selective labels), so the data do not replicate the
-production deployment problem. `ongoing` is randomly selected in this generator;
-real-world unresolved loans can be censored in a nonrandom, time-dependent way.
+## Predefined experiments
 
-## 2. Split discipline / leakage prevention
-
-- Generate the original 2,000-row CSV *once* using the unmodified supplied code.
-- Exclude `ongoing` from supervised classification (never treat as repaid).
-- Reuse `data-analysis/splits.py`: **60% train / 20% validation / 20% test**,
-  stratified on the observed binary label, using seed 42.
-- Study associations and select features on training records. Fit **all**
-  imputers, encoders, scalers, and models on training records only.
-- Use validation outcomes to **compare E1/E2/E3**, to study explainability, and
-  to inspect E4. Choose thresholds using validation *predicted probabilities*
-  and the baseline intervention frequency, without accessing labels.
-- Evaluate the fixed original pipelines and locked thresholds on the test set
-  **once** (`--finalize-test`). Do not retune afterward.
-- Candidate models are **not** retrained on train+validation before final
-  testing: retraining would change their scores and invalidate the validation-
-  selected thresholds without a new calibration step.
-
-## 3. Models and controlled comparisons
-
-| ID | Input representation | Estimator | Variable isolated |
+| Experiment | Inputs / estimator | Hypothesis | Parameters |
 | --- | --- | --- | --- |
-| E0 | Stored Bree policy scores/decisions | Deterministic rules | Existing policy performance |
-| E1 | Raw applicant-time features | L2-regularized logistic regression | Learned model vs rules |
-| E2 | Raw + 4 engineered financial indicators | Same logistic settings as E1 | Value of transparent feature engineering |
-| E3 | Same engineered features as E2 | Shallow decision tree (max depth 4, min leaf 30) | Value of nonlinear splits/interactions |
-| E4 | Best validation-selected E1/E2/E3 inputs, excluding employment | Identical estimator and parameters as selected parent | Employment ablation |
+| E0 | Original rule score and stored decisions | Fixed operational comparator | Automatic approve >=75, review 50–74, deny below 50 |
+| E1 | Original application fields + logistic regression | Data-fitted weights can improve fixed rules | L2, `C=1.0`, `lbfgs`, `max_iter=3000`, no class weights |
+| E2 | E1 plus four engineered indicators | Affordability and cash-flow ratios add signal | Same estimator and parameters as E1 |
+| E3 | Engineered inputs + decision tree | Nonlinear splits/interactions add signal | `max_depth=4`, `min_samples_leaf=30`, `min_samples_split=60`, Gini |
+| E4 | Selected E1–E3 model without employment | Test group-disparity/performance sensitivity | Same parent estimator and hyperparameters |
 
-Detailed, prespecified model parameters are in individual files under
-`experiments/`; shared decision policy lives in `config.yaml`.
+E2 adds `loan_amount/stated_monthly_income`, `abs(stated_monthly_income - documented_monthly_income)/stated_monthly_income`, `monthly_withdrawals/monthly_deposits`, and `documentation_missing`. Undefined ratios remain NaN and are imputed using training statistics, retaining the documentation-missing indicator. E4 is a diagnostic ablation, not an alternative model promoted using test results.
 
-- **E1 and E2:** `C=1.0`, L2 penalty (scikit-learn default), `lbfgs`, 3,000
-  iterations, no class weighting. Model probability scores can therefore be
-  assessed with Brier loss; class imbalance is explicitly addressed with
-  positive-class recall, FPR, PR-AUC, and threshold selection, rather than by
-  silently modifying the observed outcome prevalence.
-- **E3:** no tuning grid or test-based hyperparameter search; a deliberately
-  small tree controls variance and retains inspectable decision paths.
-- **Engineered features:** loan amount / stated income; absolute discrepancy
-  between documented and stated income relative to stated income; withdrawals
-  / deposits; explicit documentation-missing flag. When a denominator is zero
-  or a value is missing, keep NaN and impute inside the training-fitted pipeline.
-  These are derived from observable inputs, not hard-coded copies of the hidden
-  generator thresholds.
-- **E4:** remove *only* employment status. Other correlated features may act as
-  employment proxies. Removing employment does not establish fairness.
+## Operational comparator and selection rule
 
-## 4. A pre-specified operational comparator
+A positive prediction denotes **intervention**: human review or denial. The primary E0 baseline treats `flagged_for_review` and `denied` as interventions; a separate E0 strict denial-only metric is published for transparency. These are different operating policies. E0's negative rule score ranks default risk but is not a calibrated probability and has no Brier score.
 
-Bree's policy has **three actions**, whereas the learned classifier emits a
-binary indicator for **intervention** (not an actual denial decision).
+Model probabilities are thresholded at values chosen using **validation predictions only** to approximate E0's validation intervention rate (186/367 = 50.68%). This threshold calculation does not inspect validation outcome labels. Tree probabilities have large tied groups, so a shallow tree cannot always reproduce the exact volume; observed intervention rates are always reported. An E1–E3 model is eligible for selection if its validation intervention rate is within **two percentage points** of E0. Eligible models are ranked by validation default recall, then average precision, then ROC-AUC, then E1/E2/E3 simplicity order. E2 won under this fixed criterion. It was never replaced after observing test results.
 
-- **Primary E0 mapping:** `approved` = automatic approval; `flagged_for_review`
-  OR `denied` = intervention. We are comparing *intervention rates*, not denial
-  rates. This is a deliberately simplified operational mapping.
-- **Secondary E0 mapping:** only `denied` is treated as predicted default.
-  This must be separately labeled; it flags far fewer people.
-- **Risk ranking:** `1 - rule_based_score/100` for E0 ROC-AUC and PR-AUC. This
-  is **not a calibrated probability**; E0 has no Brier score.
+For every policy, confusion counts use defaulted = positive, intervention = predicted positive; FP counts repayers flagged and FN counts defaults automatically approved. The same definitions apply to precision, recall, F1, FPR and FNR. ROC-AUC and average precision evaluate continuous risk ranking. Brier scores and six-quantile calibration curves diagnose the probability quality of the learning models; **no probability calibrator is fitted**. Prediction and fairness tables include each group's sample size to prevent overinterpreting small subgroup rates.
 
-For each learned model, choose an independent validation threshold that matches
-E0's **validation intervention fraction** as closely as possible. For trees,
-identical predicted probabilities may make an exact match impossible. We report
-actual intervention rates instead of hiding this discrepancy.
+## Locked validation and final test
 
-**Parent selection rule, specified before test:** E1–E3 are eligible only when
-their intervention rate differs from the reference rate by at most **2
-percentage points**. Among eligible candidates, choose highest **default
-recall**, then **average precision**, then **ROC-AUC**, then simpler experiment
-in order E1 → E2 → E3. E4 is a diagnostic ablation of the winning parent and
-is *not automatically promoted to winner* based on its held-out test result.
+| Experiment | Validation TP/FP | Validation intervention | Final test TP/FP | Final test intervention | Final test ROC-AUC |
+| --- | --- | ---: | --- | ---: | ---: |
+| E0 review-or-deny | 77 / 109 | 50.7% | 78 / 99 | 48.1% | 0.724 |
+| E1 raw logistic | 77 / 109 | 50.7% | 83 / 108 | 51.9% | 0.714 |
+| **E2 engineered logistic** | **82 / 104** | **50.7%** | **80 / 108** | **51.1%** | **0.711** |
+| E3 shallow tree | 90 / 130 | 59.9% | 93 / 120 | 57.9% | 0.700 |
+| E4 E2 without employment | 78 / 108 | 50.7% | 78 / 110 | 51.1% | 0.718 |
 
-Without explicit business costs, the resulting intervention-rate-matched
-comparison is a useful operational proxy, *not* proof of economic optimality.
-A financial decision-maker would need default losses, intervention costs,
-credit access impacts, and regulatory review before deployment.
+The E2 test comparison to E0 is **+2 defaults detected and +9 repayers intervened upon**. E2 test default F1 (0.539) and AUC (0.711) were below E0 (0.545 and 0.724). Thus a validation improvement did not produce an unqualified test improvement. This is a limited sample, not proof that the learned model generalizes better or worse across all future populations. E3 detects more defaults while intervening on substantially more applicants; the comparison is not capacity-matched.
 
-## 5. What each metric and output means
+## Explanations, fairness and limitations
 
-`outputs/validation_metrics.csv` and (only after finalization)
-`outputs/test_metrics.csv` include:
+Global permutation importance measures the change in **validation** ROC-AUC when an original applicant field is shuffled; derived features are recalculated consistently with the shuffled input. Correlated inputs can make attribution ambiguous. Logistic coefficients and per-person log-odds contributions show the learned prediction mechanism, **not a causal explanation** for a historical default.
 
-- TP: defaults flagged; FN: defaults missed;
-- FP: repaying applicants flagged; TN: repaying applicants approved;
-- default precision, recall, F1, FPR, FNR and intervention rate;
-- ROC-AUC, average precision (PR-AUC summary), and Brier loss (learned
-  probability models only);
-- `additional_defaults_caught_vs_E0` and
-  `additional_good_applicants_flagged_vs_E0` are **absolute counts on the same
-  individuals** under the primary E0 intervention mapping.
+Group reports stratify by employment status with observed default rates, approval/intervention rates, default recall, FPR and default rates among approved applicants. In final test, employed/self-employed approval gaps decreased from 24.7 percentage points for E0 to 14.9 points for E2 and 9.0 points for E4. This specific parity measure improved, but subgroup error rates differ and E2 approved none of the 33 unemployed applicants. E4 approved seven unemployed applicants, two of whom defaulted. The dataset is small and synthetic; these outcomes cannot establish the fairness, lawfulness or safety of a real credit policy. Removing employment also does not remove proxies.
 
-`outputs/validation_employment_fairness.csv` reports per-employment-group
-approval rates, observed default rates, recall, FPR and default rates among
-approved applicants, with group sample sizes. This is descriptive evidence,
-not a definitive finding of discrimination; evaluate sample uncertainty and
-possible correlations with other financial factors.
+**Deployment limitations:** The synthetic generator observes repayment for even denied applicants, unlike real-world selective lending labels; `ongoing` cases can be censored in production, and review outcomes themselves may alter observed risk. Deployment would require real applicant data, human and legal oversight, a well-defined three-way decision policy, explicit relative costs of errors, calibration, drift monitoring, reliable reviewer-facing reasons, and fairness monitoring. None of these is validated here. This package is reproducible for an internship assessment, **not production-ready credit decision software**.
 
-`outputs/importance/E*/` provides standardized logistic coefficients or
-impurity importance for the tree, plus **permutation importance**, measured as
-the decrease in validation ROC-AUC when an original input is shuffled. Because
-ratios share underlying inputs, correlated variables can mask or redistribute
-importance. Coefficients describe log-odds, not causal effects. Permutation
-importance is measured on the unchanged trained pipeline; it does not retrain.
+## Reproduction
 
-`outputs/example_decisions_validation.csv` provides actual reviewer examples:
-logistic contributions to **log-odds** or the precise decision-tree splits.
-A model output is an indication of estimated risk, *not* an explanation of what
-caused a historical loan to default.
-
-`outputs/selection_manifest.json` records exact parameters, winning E1–E3
-parent, E4 parent, thresholds, intervention definition and whether the test was
-unlocked. `outputs/validation_predictions.csv` permits manual audit of the
-results. Figures include ROC, precision–recall and confusion-matrix plots.
-
-## 6. Preliminary experiment log (validation only)
-
-After the first validation run (n=367, defaults=109):
-
-| Experiment | Defaults caught (TP) | Repaid applicants flagged (FP) | Intervention rate | Interpretation |
-| --- | ---: | ---: | ---: | --- |
-| E0 intervention | 77 | 109 | 50.68% | Reference |
-| E1 raw logistic | 77 | 109 | 50.68% | No count improvement at fixed volume |
-| E2 engineered logistic | 82 | 104 | 50.68% | +5 defaults caught, 5 fewer good applicants flagged |
-| E3 shallow tree | 90 | 130 | 59.95% | Higher recall, **but not comparable at matched volume** |
-| E4 E2 without employment | 78 | 108 | 50.68% | Fairness/performance diagnostic |
-
-E2 is the selected parent **under the pre-specified validation rule**. These
-figures are not final test performance. The tree might improve with probability
-calibration or different settings, but such an extension would be a separately
-pre-registered experiment rather than test-driven tweaking.
-
-## 7. Open questions before any deployment recommendation
-
-- How sensitive are operating points to real economic cost ratios and applicant
-  review capacity? `flagged_for_review` is not the same as rejected credit.
-- Are probability estimates calibrated across risk levels and employment
-  groups? Overall Brier loss alone does not guarantee group calibration.
-- How uncertain are subgroup metrics for the small unemployed sample?
-- What happens to approvals and performance under covariate/concept drift?
-- What bias is introduced by conditioning on observed loan outcomes in a real
-  institution where denied applicants have no repayment data?
-- How could legal compliance, notice/reason requirements, audit trails,
-  monitoring, and human review be built into an actual credit-decision process?
-
-## 8. Reproducing results
-
-From repository root after installing `requirements.txt`:
-
-```bash
-python data-analysis/run_generation.py
-python data-analysis/analysis.py
-python -m unittest discover -s modelling-experiments/tests -v
-python modelling-experiments/run_experiments.py
-# ONLY after validation design is frozen:
-python modelling-experiments/run_experiments.py --finalize-test
-```
-
-Final test files are never generated by default. If an earlier test report is
-present, the runner blocks re-finalizing unless `--overwrite-test` is given
-(for deliberate exact reproducibility reruns only, never model selection).
+From the repository root, install `requirements.txt`, then use `python run_pipeline.py` for dataset analysis, automated tests and validation. Use `python run_pipeline.py --reproduce-final` to recompute the already locked held-out test evaluation. The stored dataset SHA-256, parent selection, fixed hyperparameters and thresholds are in [`outputs/selection_manifest.json`](outputs/selection_manifest.json). The runner checks those fields before rerunning a finalized experiment and refuses silent drift.

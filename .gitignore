@@ -1,25 +1,28 @@
-# Python environment and caches
+# Local Python environments and caches
 .venv/
 venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 .ipynb_checkpoints/
 
-# Local tooling and OS
+# Development, operating system and private settings
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# Temporary, secrets, logs
+# Temp, local secrets and test debris
 .env
 .env.*
 !.env.example
 *.log
 *.tmp
+*.bak
+.coverage
 
-# Keep the generated loan CSV and small analysis figures/tables tracked
-# so reviewers can inspect findings without running the pipeline.
+# The supplied generator output and small EDA/model evaluation artifacts are
+# intentionally tracked for assessors and reproducibility.

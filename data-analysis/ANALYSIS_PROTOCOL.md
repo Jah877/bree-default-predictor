@@ -1,50 +1,18 @@
-# Data-analysis protocol — before model selection
+# Exploratory data analysis: protocol and executed checks
 
-## Objective
+## Objective and reproducibility
 
-Understand the synthetic data, reconstruct Bree's current policy, and separate (a) factors **explicitly rewarded or penalized by the policy** from (b) characteristics **observationally associated with default**. Preserve an untouched test partition for an honest model comparison.
+Characterize Bree's synthetic loan applications, reconstruct the existing policy, and distinguish **features explicitly rewarded or penalized by the existing policy** from **financial characteristics observed to be associated with repayment outcomes**. The generator in `generate_data.py` is unchanged from Bree's brief. `run_generation.py` ensures that the output is stored in the intended project directory. The generated CSV is committed as an evaluation input.
 
-## 1. Reproducibility and integrity
+The original 2,000 records were checked for unique applicant IDs, schema and labels, data types, missing values and score/action validity. Outcome counts differ from the narrative approximations and were preserved unchanged. The 164 ongoing records are counted descriptively but not treated as known labels. A seeded stratified 60/20/20 split of 1,836 resolved outcomes isolates the training data for outcome-related EDA.
 
-- Execute `generate_data.py` **unchanged** through `run_generation.py`; commit the output CSV.
-- Check row count, unique IDs, field types, nulls and outcome / policy-action distributions.
-- Compare actual label proportions with Bree's textual description, and describe discrepancies rather than manipulating data to meet expectations.
-- Keep `ongoing` records for descriptive counts, but do not treat them as repaid or defaulted in supervised binary training.
+## Descriptive analyses
 
-**Outputs:** `data_quality.csv`, `outcome_counts.csv`, `baseline_decision_counts.csv`.
+1. **Data integrity:** `data_quality.csv`, `outcome_counts.csv` and `baseline_decision_counts.csv` summarize schema, nulls and distributions.
+2. **Feature dependence:** Spearman correlations quantify rank-order co-movement among numeric application inputs and derived ratios. These correlations identify possible redundancy, not causal effects or predictive feature importance. `spearman_feature_correlations.csv` and `figures/feature_dependencies.png` contain the results.
+3. **Observed risk associations:** Training-set default rates are compared among financial-characteristic groups, using group sizes and percentage-point differences. Loan-to-income is also binned by observed quantiles to visualize nonlinear associations. See `descriptive_risk_signals_train.csv`, `loan_burden_default_rate_train.csv` and `figures/loan_burden_default_rate.png`. All such summaries are unadjusted correlations.
+4. **Baseline reconstruction:** The income verification (30%), loan/income (25%), account stability (20%), employment (15%) and cash flow (10%) rule components were reconstructed from visible inputs. The stored `rule_based_score` and `rule_based_decision` are authoritative for comparing historical decisions because some original calculations used unrounded values unavailable in the CSV. All 2,000 decisions matched the reconstruction, while 21 numerical scores differed. Outputs include `baseline_component_summary_train.csv` and `baseline_reconstruction_check.json`.
+5. **Baseline diagnostic metrics and fairness:** The training split was evaluated both for an intervention definition (review or deny) and a stricter denial-only definition, using default precision, recall, F1, FPR, FNR and ROC-AUC. Approval, review, denial and observed default frequencies were separated by employment group. See `baseline_metrics_train_only.csv`, `employment_fairness_train.csv`, and `figures/employment_fairness.png`.
+6. **One-feature-at-a-time policy sensitivity:** A predefined set of loan amount, stated income, balance, overdraft, deposits consistency and employment-status changes was applied to original training applicant records. The reconstructed policy was reevaluated, with score deltas and action flips exported to `baseline_sensitivity_train.csv`. These synthetic perturbations measure the **rules' sensitivity**, not independent causal effects or feature importance for a learned classifier.
 
-## 2. Hold out data before outcome-related analysis
-
-- Use seeded stratified 60/20/20 train/validation/test on **repaid/defaulted cases only** (`splits.py`).
-- Explore associations, default rates, rule metrics and fairness outcomes on **training** records only. Inspect validation/test performance tomorrow when fitting and selecting models.
-- Be wary that missing outcomes can create censoring and selection bias in real lending portfolios (the synthetic generator randomly marks ongoing).
-
-## 3. Feature quality, dependency, and descriptive signals
-
-- Examine missing documented income, discrepancies between stated and documented income, loan-to-income, withdrawal/deposit ratio, bank overdrafts and balance.
-- Use Spearman correlations to identify redundant numeric variables; correlations alone don't measure prediction value.
-- Compare training-set conditional default rates for understandable financial indicators and across loan-burden quantile bins; include sample sizes to show uncertainty.
-- Distinguish synthetic data relationships from plausible real-world financial intuition.
-
-**Outputs:** `spearman_feature_correlations.csv`, `descriptive_risk_signals_train.csv`, `loan_burden_default_rate_train.csv`, and the associated plots.
-
-## 4. Reverse engineer and evaluate Bree's baseline
-
-- Compute five raw sub-scores and weighted contributions (income verification 30%, income level 25%, account stability 20%, employment 15%, withdrawals/deposits 10%).
-- Rebuild policy actions from a score threshold: approve >=75, review >=50, otherwise deny.
-- Compare reconstructed scores/decisions to *stored* baseline results; use stored data as the ground truth for historical baseline metrics because some input values were rounded before CSV export.
-- For a binary comparison with actual outcomes, report two explicit mappings: **denied-only** predicts default vs **denied-or-review** predicts default. Compute default precision/recall/F1, confusion counts, false-positive/negative rates and ROC-AUC using negative rule score (lower score means more default risk).
-
-**Outputs:** `baseline_component_summary_train.csv`, `baseline_reconstruction_check.json`, and `baseline_metrics_train_only.csv`.
-
-## 5. Sensitivity and fairness
-
-- Change *one observed input at a time*, recalculate baseline component scores and report policy decision flips. The sensitivity measures **policy responsiveness**, not causes of default, not independently realistic changes to a person's finances, and not feature importance for a future predictive model.
-- Employment-status what-ifs are restricted to the relevant source groups (employed to self-employed and vice versa), making Bree's explicit employment penalty inspectable.
-- Compare baseline approval, review, denial and observed group default rates by employment status. In the next phase add new-model group rates and group-specific error rates.
-
-**Outputs:** `baseline_sensitivity_train.csv`, `employment_fairness_train.csv` and `employment_fairness.png`.
-
-## Modelling decision tomorrow
-
-Start with a transparent, carefully preprocessed logistic regression; test whether a shallow decision tree's nonlinear splits improve held-out risk detection. Do not tune using test outcomes. Compare with the same baseline sample and explicit decision threshold/mapping. Examine calibration, group-specific error rates and case-level explanations before considering an ensemble or deployment recommendation.
+Outcome-related exploratory results use training records; the validation partition controls model/threshold selection, and the held-out test provides the final comparison. Training EDA is not an estimate of out-of-sample model performance. Full E0–E4 experiments and their final results are documented in [`../modelling-experiments/METHODOLOGY.md`](../modelling-experiments/METHODOLOGY.md).

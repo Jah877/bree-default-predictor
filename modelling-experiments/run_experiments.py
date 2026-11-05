@@ -16,7 +16,6 @@ import hashlib
 import json
 import sys
 from dataclasses import asdict
-from datetime import datetime, timezone
 from pathlib import Path
 
 import matplotlib
@@ -26,6 +25,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from sklearn.metrics import ConfusionMatrixDisplay, PrecisionRecallDisplay, RocCurveDisplay
+from sklearn.calibration import calibration_curve
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -70,7 +70,7 @@ def baseline_evaluation(rows: pd.DataFrame, y: np.ndarray,
         intervention = rows["rule_based_decision"].isin(interventions).astype(int).to_numpy()
         rows_metrics.append(score_binary(
             y, score, intervention, variant, split_name,
-            threshold=None, calibrated_probability=False,
+            threshold=None, is_probability=False,
         ))
         groups.append(group_policy_metrics(rows, y, intervention, variant, split_name))
     return rows_metrics, groups
@@ -81,7 +81,7 @@ def evaluate_model(model, key: str, rows: pd.DataFrame, y: np.ndarray,
     probabilities = model.predict_proba(get_X(rows))[:, 1]
     intervention = (probabilities >= threshold).astype(int)
     metrics = score_binary(y, probabilities, intervention, key, split_name,
-                           threshold=threshold, calibrated_probability=True)
+                           threshold=threshold, is_probability=True)
     fairness = group_policy_metrics(rows, y, intervention, key, split_name)
     return metrics, fairness, probabilities, intervention
 
@@ -147,10 +147,60 @@ def plot_confusion(y: np.ndarray, predictions: dict[str, np.ndarray],
         plt.close(fig)
 
 
+
+def plot_calibration(y: np.ndarray, scores: dict[str, np.ndarray], prefix: str) -> None:
+    """Reliability curves for uncalibrated ML probabilities (never fit a calibrator).
+
+    This is a diagnostic, not a procedure that modifies predictions. The
+    policy's 0-100 score is excluded because it is not a probability.
+    """
+    figs = OUT / "figures"
+    figs.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(6.2, 5))
+    ax.plot([0, 1], [0, 1], "--", color="gray", label="Perfect calibration")
+    for name, score in scores.items():
+        observed, predicted = calibration_curve(
+            y, score, n_bins=6, strategy="quantile"
+        )
+        ax.plot(predicted, observed, marker="o", label=name)
+    ax.set_xlabel("Mean estimated default probability")
+    ax.set_ylabel("Observed default fraction")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_title(f"{prefix.title()} probability calibration (6 quantile bins)")
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    fig.savefig(figs / f"{prefix}_calibration.png", dpi=160)
+    plt.close(fig)
+
+
+def verify_existing_test_lock(manifest_file: Path, dataset_sha: str,
+                              parent: str, specs: dict, thresholds: dict) -> None:
+    """Block accidentally overwriting a previously finalized test's provenance."""
+    if not manifest_file.exists():
+        raise RuntimeError("Final test exists without its selection manifest.")
+    with manifest_file.open(encoding="utf-8") as h:
+        previous = json.load(h)
+    same = (
+        previous.get("dataset_sha256") == dataset_sha
+        and previous.get("selected_parent") == parent
+        and previous.get("experiments") == {k: asdict(v) for k, v in specs.items()}
+        and set(previous.get("thresholds", {})) == set(thresholds)
+        and all(np.isclose(float(previous["thresholds"][k]), float(v), atol=1e-12, rtol=0)
+                for k, v in thresholds.items())
+    )
+    if not same:
+        raise RuntimeError(
+            "Dataset, model configuration, selected model, or thresholds changed "
+            "after final test evaluation. Restore the locked submission."
+        )
+
+
 def main(finalize_test: bool = False, overwrite_test: bool = False) -> None:
     settings = SETTINGS
     OUT.mkdir(parents=True, exist_ok=True)
-    if finalize_test and (OUT / "test_metrics.csv").exists() and not overwrite_test:
+    existing_test = (OUT / "test_metrics.csv").exists()
+    if finalize_test and existing_test and not overwrite_test:
         raise FileExistsError(
             "Test evaluation already exists. Do not repeatedly select models from it. "
             "For a deliberate reproducibility rerun only, pass --overwrite-test."
@@ -223,6 +273,7 @@ def main(finalize_test: bool = False, overwrite_test: bool = False) -> None:
         OUT / "validation_predictions.csv", index=False
     )
     plot_validation_curves(y_val, val_curve_scores)
+    plot_calibration(y_val, {key: val_predictions[key][0] for key in ("E1", "E2", "E3", "E4")}, "validation")
     plot_confusion(y_val, {
         "E0_intervention": primary_intervention,
         parent_key: val_interventions[parent_key],
@@ -244,7 +295,6 @@ def main(finalize_test: bool = False, overwrite_test: bool = False) -> None:
     manifest = {
         "dataset_sha256": dataset_hash,
         "split_sizes": {name: len(rows) for name, rows in parts.items()},
-        "created_utc": datetime.now(timezone.utc).isoformat(),
         "selection_split": "validation",
         "selected_parent": parent_key,
         "e4_ablates": parent_key,
@@ -256,12 +306,16 @@ def main(finalize_test: bool = False, overwrite_test: bool = False) -> None:
         "target_validation_intervention_rate": target_rate,
         "winner_eligibility_rate_gap_at_most": allowed_rate_gap,
         "selection_rank": ["default_recall", "average_precision", "roc_auc", "prespecified_simplicity"],
-        "test_unlocked": bool(finalize_test),
+        "test_unlocked": bool(finalize_test or existing_test),
         "test_not_used_for_model_or_threshold_selection": True,
         "experiments": {k: asdict(v) for k, v in specs.items()},
         "thresholds": thresholds,
         "limitation": "Observational synthetic labels, not causal effects or deployment-ready approval policy.",
     }
+    if existing_test:
+        verify_existing_test_lock(
+            OUT / "selection_manifest.json", dataset_hash, parent_key, specs, thresholds
+        )
     with (OUT / "selection_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
 
@@ -302,6 +356,7 @@ def main(finalize_test: bool = False, overwrite_test: bool = False) -> None:
         OUT / "test_predictions.csv", index=False
     )
     plot_confusion(y_test, confusions, "test")
+    plot_calibration(y_test, {key: test_predictions[key][0] for key in (parent_key, "E4")}, "test")
     print("FINAL TEST REPORT WRITTEN. Do not adapt the model or decision threshold based on it.")
 
 

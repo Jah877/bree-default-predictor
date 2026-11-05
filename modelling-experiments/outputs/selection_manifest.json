@@ -5,7 +5,6 @@
     "validation": 367,
     "test": 368
   },
-  "created_utc": "2026-11-05T02:03:05.208765+00:00",
   "selection_split": "validation",
   "selected_parent": "E2",
   "e4_ablates": "E2",
@@ -22,7 +21,7 @@
     "roc_auc",
     "prespecified_simplicity"
   ],
-  "test_unlocked": false,
+  "test_unlocked": true,
   "test_not_used_for_model_or_threshold_selection": true,
   "experiments": {
     "E1": {

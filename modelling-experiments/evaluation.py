@@ -37,7 +37,7 @@ def select_threshold_at_intervention_rate(probabilities: np.ndarray,
 
 def score_binary(y_true: np.ndarray, risk_score: np.ndarray,
                  intervene: np.ndarray, name: str, split_name: str,
-                 threshold: float | None, calibrated_probability: bool) -> dict:
+                 threshold: float | None, is_probability: bool) -> dict:
     """Default=1. Recall measures defaults caught; FPR measures good borrowers flagged."""
     truth = np.asarray(y_true, dtype=int)
     scores = np.asarray(risk_score, dtype=float)
@@ -59,7 +59,7 @@ def score_binary(y_true: np.ndarray, risk_score: np.ndarray,
         "average_precision": float(average_precision_score(truth, scores)),
         # The baseline rule score is NOT a calibrated probability.
         "brier_score": (float(brier_score_loss(truth, scores))
-                        if calibrated_probability else np.nan),
+                        if is_probability else np.nan),
     }
 
 
